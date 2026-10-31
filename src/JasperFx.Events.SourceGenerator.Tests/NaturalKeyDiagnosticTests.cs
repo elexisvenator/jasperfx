@@ -247,6 +247,76 @@ public class WrongType
     }
 
     [Fact]
+    public void a_nullable_struct_key_is_the_same_type_as_the_key()
+    {
+        NaturalKeyDiagnostics(@"
+public readonly record struct Sku(string Value);
+
+public class Product
+{
+    public Guid Id { get; set; }
+
+    [NaturalKey]
+    public Sku Sku { get; set; }
+}
+
+public class ProductView
+{
+    public Guid Id { get; set; }
+
+    [MappedNaturalKey<Product>]
+    public Sku? Sku { get; set; }
+}
+
+public class NullableOwner
+{
+    public Guid Id { get; set; }
+
+    [NaturalKey]
+    public Sku? Sku { get; set; }
+}
+
+public class NullableOwnerView
+{
+    public Guid Id { get; set; }
+
+    [MappedNaturalKey<NullableOwner>]
+    public Sku Sku { get; set; }
+}
+").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void JFXEVT009_a_key_and_its_nullable_form()
+    {
+        var diagnostic = NaturalKeyDiagnostics(@"
+public readonly record struct Sku(string Value);
+
+public class Product
+{
+    public Guid Id { get; set; }
+
+    [NaturalKey]
+    public Sku Sku { get; set; }
+}
+
+public class Both
+{
+    public Guid Id { get; set; }
+
+    [NaturalKey]
+    public Sku Own { get; set; }
+
+    [MappedNaturalKey<Product>]
+    public Sku? Borrowed { get; set; }
+}
+").ShouldHaveSingleItem();
+
+        diagnostic.Id.ShouldBe("JFXEVT009");
+        diagnostic.GetMessage().ShouldContain("of the same type 'Test.Sku'");
+    }
+
+    [Fact]
     public void the_diagnostic_points_at_the_attribute()
     {
         var source = Preamble + @"

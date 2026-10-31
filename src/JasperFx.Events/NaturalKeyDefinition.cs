@@ -77,7 +77,17 @@ public class NaturalKeyDefinition
         Member = member;
         SourceProjectionType = sourceProjectionType;
 
-        var memberType = member.GetMemberType()!;
+        // A struct key declared as TKey? on the aggregate is still a TKey key: the lookup, the fetch
+        // APIs and every comparison with another key use the underlying type. GetMemberType() already
+        // strips Nullable<T>, so the declared type is read off the member itself.
+        var declaredType = member switch
+        {
+            PropertyInfo property => property.PropertyType,
+            FieldInfo field => field.FieldType,
+            _ => member.GetMemberType()!
+        };
+        var memberType = KeyTypeOf(declaredType);
+        IsNullable = memberType != declaredType;
         OuterType = memberType;
 
         // Determine if this is a strong-typed id (value type wrapper) or a primitive
@@ -129,9 +139,22 @@ public class NaturalKeyDefinition
     public Type LookupAggregateType => SourceProjectionDefinition?.AggregateType ?? AggregateType;
 
     /// <summary>
-    /// The outer type of the natural key (may be a strong-typed id wrapper).
+    /// The outer type of the natural key (may be a strong-typed id wrapper). For a member declared as
+    /// <c>Nullable&lt;T&gt;</c> this is <c>T</c>; see <see cref="IsNullable" />.
     /// </summary>
     public Type OuterType { get; }
+
+    /// <summary>
+    /// True when the member is declared as <c>Nullable&lt;T&gt;</c> of the key type. It is the same key as a
+    /// member of type <c>T</c>; an aggregate whose key is still null simply has no lookup row.
+    /// </summary>
+    public bool IsNullable { get; }
+
+    /// <summary>
+    /// The natural key type a member, event property or <c>[NaturalKeySource]</c> return type of
+    /// <paramref name="type" /> stands for: <c>T</c> for <c>Nullable&lt;T&gt;</c>, otherwise the type itself.
+    /// </summary>
+    public static Type KeyTypeOf(Type type) => Nullable.GetUnderlyingType(type) ?? type;
 
     /// <summary>
     /// The inner/primitive type of the natural key (int, long, or string).

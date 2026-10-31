@@ -52,13 +52,13 @@ internal static class NaturalKeyAnalyzer
                 type.Name, owned[0].Property.Name, extra.Property.Name));
         }
 
-        foreach (var group in keys.GroupBy(x => x.Property.Type, SymbolEqualityComparer.Default))
+        foreach (var group in keys.GroupBy(x => x.KeyType, SymbolEqualityComparer.Default))
         {
             var sameType = group.ToList();
             foreach (var extra in sameType.Skip(1))
             {
                 diagnostics.Add(Diagnostic.Create(DiagnosticDescriptors.DuplicateNaturalKeyType, extra.Location,
-                    type.Name, sameType[0].Property.Name, extra.Property.Name, extra.Property.Type.ToDisplayString()));
+                    type.Name, sameType[0].Property.Name, extra.Property.Name, extra.KeyType.ToDisplayString()));
             }
         }
 
@@ -90,7 +90,7 @@ internal static class NaturalKeyAnalyzer
         var sourceKeys = NaturalKeysOf(sourceAggregate ?? source);
 
         var sameTypeKey = sourceKeys.FirstOrDefault(x =>
-            SymbolEqualityComparer.Default.Equals(x.Property.Type, mapped.Property.Type));
+            SymbolEqualityComparer.Default.Equals(x.KeyType, mapped.KeyType));
         if (sameTypeKey is { Source: not null })
         {
             return Diagnostic.Create(DiagnosticDescriptors.NaturalKeySourceIsMapped, mapped.Location,
@@ -108,7 +108,7 @@ internal static class NaturalKeyAnalyzer
                 type.Name, mapped.Property.Name, source.Name, reason);
         }
 
-        if (!SymbolEqualityComparer.Default.Equals(sourceOwned.Property.Type, mapped.Property.Type))
+        if (!SymbolEqualityComparer.Default.Equals(sourceOwned.KeyType, mapped.KeyType))
         {
             return Diagnostic.Create(DiagnosticDescriptors.NaturalKeySourceTypeMismatch, mapped.Location,
                 type.Name, mapped.Property.Name, mapped.Property.Type.ToDisplayString(),
@@ -199,6 +199,17 @@ internal static class NaturalKeyAnalyzer
         }
 
         public IPropertySymbol Property { get; }
+
+        /// <summary>
+        /// The key type the property stands for: <c>T</c> for a <c>Nullable&lt;T&gt;</c> property, which is the
+        /// same key as a property of type <c>T</c>.
+        /// </summary>
+        public ITypeSymbol KeyType => Property.Type is INamedTypeSymbol
+        {
+            OriginalDefinition.SpecialType: SpecialType.System_Nullable_T
+        } nullable
+            ? nullable.TypeArguments[0]
+            : Property.Type;
 
         /// <summary>The source projection for a mapped key; null for an owned key.</summary>
         public INamedTypeSymbol? Source { get; }

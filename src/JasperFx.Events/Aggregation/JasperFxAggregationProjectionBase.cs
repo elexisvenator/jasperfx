@@ -1089,7 +1089,8 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
     {
         reason = null;
 
-        var keyType = naturalKeyProp.PropertyType;
+        // TKey and TKey? are the same key, wherever either appears
+        var keyType = NaturalKeyDefinition.KeyTypeOf(naturalKeyProp.PropertyType);
         var eventParam = Expression.Parameter(typeof(IEvent), "e");
         var blockers = new List<string>();
 
@@ -1097,7 +1098,7 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
         //    parameter comes off the event. Nothing is fabricated and no user aggregation code runs.
         //      [NaturalKeySource] public static Code KeyFor(CodeChanged e) => new Code(e.NewCode);
         //      [NaturalKeySource] public static Code KeyFor(IEvent<CodeChanged> e) => ...;
-        if (method.IsStatic && method.ReturnType == keyType)
+        if (method.IsStatic && NaturalKeyDefinition.KeyTypeOf(method.ReturnType) == keyType)
         {
             if (tryBindArguments(eventParam, parameters, eventType, docType, null, out var keyArgs,
                     out var blocker))
@@ -1208,7 +1209,8 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
         blocker = null;
 
         var candidates = eventType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.PropertyType == naturalKeyProp.PropertyType && p.GetMethod != null)
+            .Where(p => NaturalKeyDefinition.KeyTypeOf(p.PropertyType) ==
+                        NaturalKeyDefinition.KeyTypeOf(naturalKeyProp.PropertyType) && p.GetMethod != null)
             .ToArray();
 
         if (candidates.Length == 0) return null;
@@ -1281,7 +1283,8 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
         }
 
         Expression keyExpression;
-        if (method.ReturnType == naturalKeyProp.PropertyType)
+        if (NaturalKeyDefinition.KeyTypeOf(method.ReturnType) ==
+            NaturalKeyDefinition.KeyTypeOf(naturalKeyProp.PropertyType))
         {
             // e.g. an instance method on the aggregate that simply returns the key
             keyExpression = call;
