@@ -82,10 +82,16 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
             base.Version = att.Version;
         }
 
-        NaturalKeyDefinition = discoverNaturalKey(GetType());
+        (NaturalKeyDefinition, MappedNaturalKeyDefinitions) = discoverNaturalKeys(GetType(), _naturalKeyProblems);
     }
 
+    // Problems with the [NaturalKey] properties themselves (as opposed to their [NaturalKeySource]
+    // methods), raised by assertNaturalKeyValidity() at configuration time.
+    private readonly List<string> _naturalKeyProblems = new();
+
     public NaturalKeyDefinition? NaturalKeyDefinition { get; }
+
+    public NaturalKeyDefinition[] MappedNaturalKeyDefinitions { get; }
 
     /// <summary>
     ///     Explicitly register how the natural key of <typeparamref name="TDoc" /> is derived from events,
@@ -104,8 +110,12 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
     {
         if (NaturalKeyDefinition == null)
         {
+            var reason = MappedNaturalKeyDefinitions.Length == 0
+                ? "has no property marked with [NaturalKey]"
+                : "only has mapped natural keys, which are maintained by their source projection";
+
             throw new InvalidProjectionException(
-                $"{typeof(TDoc).FullNameInCode()} has no property marked with [NaturalKey], so there is no natural key to configure.");
+                $"{typeof(TDoc).FullNameInCode()} {reason}, so there is no natural key to configure.");
         }
 
         configure(new NaturalKeyBuilder<TDoc>(NaturalKeyDefinition));
@@ -119,6 +129,13 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
     /// </summary>
     private void assertNaturalKeyValidity()
     {
+        if (_naturalKeyProblems.Count > 0)
+        {
+            throw new InvalidProjectionException(
+                $"Invalid natural key configuration on {typeof(TDoc).FullNameInCode()}:{System.Environment.NewLine}" +
+                _naturalKeyProblems.Select(x => "  * " + x).Join(System.Environment.NewLine));
+        }
+
         if (NaturalKeyDefinition == null || NaturalKeyDefinition.DiscoveryProblems.Count == 0) return;
 
         var problems = NaturalKeyDefinition.DiscoveryProblems
@@ -897,16 +914,56 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
         return (lastEvent, aggregate);
     }
 
-    private static NaturalKeyDefinition? discoverNaturalKey(Type projectionType)
+    private static (NaturalKeyDefinition? owned, NaturalKeyDefinition[] mapped) discoverNaturalKeys(
+        Type projectionType, List<string> problems)
     {
         var docType = typeof(TDoc);
 
-        // Find a property marked with [NaturalKey]
-        var naturalKeyProp = docType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .FirstOrDefault(p => p.GetCustomAttribute<NaturalKeyAttribute>() != null);
+        NaturalKeyDefinition? owned = null;
+        var mapped = new List<NaturalKeyDefinition>();
 
-        if (naturalKeyProp == null) return null;
+        foreach (var prop in docType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            var att = prop.GetCustomAttribute<NaturalKeyAttribute>();
+            if (att == null) continue;
 
+            if (att.SourceProjection != null)
+            {
+                if (att.SourceProjection == docType || att.SourceProjection == projectionType)
+                {
+                    problems.Add(
+                        $"[NaturalKey] property '{prop.Name}' names its own projection as its SourceProjection. Remove SourceProjection to make it an owned key.");
+                    continue;
+                }
+
+                mapped.Add(new NaturalKeyDefinition(docType, prop, att.SourceProjection));
+                continue;
+            }
+
+            // Discovery used to take the first owned key and silently ignore the rest.
+            if (owned != null)
+            {
+                problems.Add(
+                    $"[NaturalKey] properties '{owned.Member.Name}' and '{prop.Name}' are both owned natural keys, but an aggregate can own at most one. Map the others to the projection that owns them with [MappedNaturalKey<T>].");
+                continue;
+            }
+
+            owned = discoverOwnedNaturalKey(projectionType, docType, prop);
+        }
+
+        // Fetching by natural key is keyed on the .NET type of the key, so every key needs its own type.
+        var all = owned == null ? mapped : mapped.Prepend(owned).ToList();
+        foreach (var group in all.GroupBy(x => x.OuterType).Where(x => x.Count() > 1))
+        {
+            problems.Add(
+                $"[NaturalKey] properties {group.Select(x => $"'{x.Member.Name}'").Join(", ")} share the key type {group.Key.FullNameInCode()}. Every natural key on an aggregate needs a distinct type.");
+        }
+
+        return (owned, mapped.ToArray());
+    }
+
+    private static NaturalKeyDefinition discoverOwnedNaturalKey(Type projectionType, Type docType, PropertyInfo naturalKeyProp)
+    {
         var definition = new NaturalKeyDefinition(docType, naturalKeyProp);
 
         // Discover [NaturalKeySource] methods on the aggregate type. Include BOTH instance
