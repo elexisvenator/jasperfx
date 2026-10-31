@@ -58,8 +58,9 @@ public partial class ComplianceMappedOrderSummary
 /// <remarks>
 /// <para>
 /// Every fact registers <see cref="ComplianceMappedOrderSummary"/> <see cref="SnapshotLifecycle.Async"/>
-/// against inline owners. The async registration is the point: an async aggregate may not own a
-/// natural key, so the only way these fetches can resolve is through the owner's lookup.
+/// against inline owners. The async registration is the point: the summary owns no lookup of its own,
+/// so the only way these fetches can resolve is through the owners' lookups, and the summary's stored
+/// snapshot lags its stream until a daemon catches up.
 /// </para>
 /// <para>
 /// Most facts run without a daemon. The shared contract of <c>FetchLatest</c> and
