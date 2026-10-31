@@ -63,10 +63,19 @@ public class NaturalKeyDefinition
 {
     private readonly List<NaturalKeySourceProblem> _problems = new();
 
-    public NaturalKeyDefinition(Type aggregateType, MemberInfo member)
+    public NaturalKeyDefinition(Type aggregateType, MemberInfo member) : this(aggregateType, member, null)
+    {
+    }
+
+    /// <summary>
+    /// A natural key whose lookup is owned by <paramref name="sourceProjectionType" /> when that is not
+    /// null; see <see cref="SourceProjectionType" />.
+    /// </summary>
+    public NaturalKeyDefinition(Type aggregateType, MemberInfo member, Type? sourceProjectionType)
     {
         AggregateType = aggregateType;
         Member = member;
+        SourceProjectionType = sourceProjectionType;
 
         var memberType = member.GetMemberType()!;
         OuterType = memberType;
@@ -94,6 +103,30 @@ public class NaturalKeyDefinition
 
     public Type AggregateType { get; }
     public MemberInfo Member { get; }
+
+    /// <summary>
+    /// The projection (or self-aggregating snapshot type) that owns this natural key's lookup, from
+    /// <c>[NaturalKey(SourceProjection = ...)]</c> or <c>[MappedNaturalKey&lt;T&gt;]</c>. Null for an owned key.
+    /// </summary>
+    public Type? SourceProjectionType { get; }
+
+    /// <summary>
+    /// True when this key's lookup is owned by another projection (<see cref="SourceProjectionType" />).
+    /// A mapped key has no event mappings of its own.
+    /// </summary>
+    public bool IsMapped => SourceProjectionType != null;
+
+    /// <summary>
+    /// The owned natural key definition of the source projection, resolved by the event store once every
+    /// projection is registered. Null for an owned key, or before resolution.
+    /// </summary>
+    public NaturalKeyDefinition? SourceProjectionDefinition { get; set; }
+
+    /// <summary>
+    /// The aggregate type whose natural key lookup serves this key: the source projection's aggregate
+    /// for a mapped key once resolved, otherwise this key's own aggregate.
+    /// </summary>
+    public Type LookupAggregateType => SourceProjectionDefinition?.AggregateType ?? AggregateType;
 
     /// <summary>
     /// The outer type of the natural key (may be a strong-typed id wrapper).
