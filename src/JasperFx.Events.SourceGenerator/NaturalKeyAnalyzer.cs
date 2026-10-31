@@ -1,0 +1,208 @@
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Threading;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+
+namespace JasperFx.Events.SourceGenerator;
+
+/// <summary>
+/// Build-time validation of [NaturalKey] / [MappedNaturalKey&lt;T&gt;] (JFXEVT008-013). Independent of
+/// the evolver pipelines: any type carrying a natural key attribute is checked, whether or not the
+/// generator emits anything for it. A source projection is resolved through its symbol, so a source
+/// in a referenced assembly is checked too.
+/// </summary>
+internal static class NaturalKeyAnalyzer
+{
+    private const string AttributeNamespace = "JasperFx.Events.Aggregation";
+
+    /// <summary>
+    /// Every [NaturalKey] subclass is named "...NaturalKey...", so this cheaply narrows the syntax walk
+    /// to type declarations that might carry one. Semantic checks follow in <see cref="Analyze" />.
+    /// </summary>
+    public static bool IsPossibleCandidate(SyntaxNode node)
+    {
+        if (node is not TypeDeclarationSyntax type) return false;
+
+        foreach (var attribute in type.DescendantNodes().OfType<AttributeSyntax>())
+        {
+            if (attribute.Name.ToString().Contains("NaturalKey")) return true;
+        }
+
+        return false;
+    }
+
+    public static ImmutableArray<Diagnostic> Analyze(GeneratorSyntaxContext context, CancellationToken token)
+    {
+        if (context.SemanticModel.GetDeclaredSymbol(context.Node, token) is not INamedTypeSymbol type)
+        {
+            return ImmutableArray<Diagnostic>.Empty;
+        }
+
+        var keys = NaturalKeysOf(type);
+        if (keys.Count == 0) return ImmutableArray<Diagnostic>.Empty;
+
+        var diagnostics = new List<Diagnostic>();
+
+        var owned = keys.Where(x => x.Source == null).ToList();
+        foreach (var extra in owned.Skip(1))
+        {
+            diagnostics.Add(Diagnostic.Create(DiagnosticDescriptors.MultipleOwnedNaturalKeys, extra.Location,
+                type.Name, owned[0].Property.Name, extra.Property.Name));
+        }
+
+        foreach (var group in keys.GroupBy(x => x.Property.Type, SymbolEqualityComparer.Default))
+        {
+            var sameType = group.ToList();
+            foreach (var extra in sameType.Skip(1))
+            {
+                diagnostics.Add(Diagnostic.Create(DiagnosticDescriptors.DuplicateNaturalKeyType, extra.Location,
+                    type.Name, sameType[0].Property.Name, extra.Property.Name, extra.Property.Type.ToDisplayString()));
+            }
+        }
+
+        foreach (var mapped in keys.Where(x => x.Source != null))
+        {
+            var diagnostic = CheckSource(type, mapped);
+            if (diagnostic != null) diagnostics.Add(diagnostic);
+        }
+
+        return diagnostics.ToImmutableArray();
+    }
+
+    private static Diagnostic? CheckSource(INamedTypeSymbol type, NaturalKeyInfo mapped)
+    {
+        var source = mapped.Source!;
+
+        // A bad typeof() is already CS0246; don't pile a second error on it.
+        if (source.TypeKind == TypeKind.Error) return null;
+
+        var sourceAggregate = AggregateOf(source);
+
+        if (SymbolEqualityComparer.Default.Equals(sourceAggregate ?? source, type))
+        {
+            return Diagnostic.Create(DiagnosticDescriptors.NaturalKeySourceIsSelf, mapped.Location,
+                type.Name, mapped.Property.Name);
+        }
+
+        // Either an aggregate projection (whose aggregate owns the key) or a self-aggregating type.
+        var sourceKeys = NaturalKeysOf(sourceAggregate ?? source);
+
+        var sameTypeKey = sourceKeys.FirstOrDefault(x =>
+            SymbolEqualityComparer.Default.Equals(x.Property.Type, mapped.Property.Type));
+        if (sameTypeKey is { Source: not null })
+        {
+            return Diagnostic.Create(DiagnosticDescriptors.NaturalKeySourceIsMapped, mapped.Location,
+                type.Name, mapped.Property.Name, source.Name, sameTypeKey.Property.Name);
+        }
+
+        var sourceOwned = sourceKeys.FirstOrDefault(x => x.Source == null);
+        if (sourceOwned == null)
+        {
+            var reason = sourceAggregate == null && sourceKeys.Count == 0
+                ? "is neither an aggregate projection nor an aggregate with a [NaturalKey] property"
+                : "does not own a natural key";
+
+            return Diagnostic.Create(DiagnosticDescriptors.NaturalKeySourceHasNoKey, mapped.Location,
+                type.Name, mapped.Property.Name, source.Name, reason);
+        }
+
+        if (!SymbolEqualityComparer.Default.Equals(sourceOwned.Property.Type, mapped.Property.Type))
+        {
+            return Diagnostic.Create(DiagnosticDescriptors.NaturalKeySourceTypeMismatch, mapped.Location,
+                type.Name, mapped.Property.Name, mapped.Property.Type.ToDisplayString(),
+                source.Name, sourceOwned.Property.Name, sourceOwned.Property.Type.ToDisplayString());
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The aggregate (TDoc) of a projection class, found by walking its base types to
+    /// JasperFxAggregationProjectionBase&lt;TDoc, TId, TOperations, TQuerySession&gt;. Null when the type is
+    /// not an aggregate projection, e.g. a self-aggregating snapshot.
+    /// </summary>
+    private static INamedTypeSymbol? AggregateOf(INamedTypeSymbol type)
+    {
+        for (var current = type.BaseType; current != null; current = current.BaseType)
+        {
+            if (current is { Name: "JasperFxAggregationProjectionBase", Arity: 4 }
+                && current.ContainingNamespace.ToDisplayString() == AttributeNamespace)
+            {
+                return current.TypeArguments[0] as INamedTypeSymbol;
+            }
+        }
+
+        return null;
+    }
+
+    private static List<NaturalKeyInfo> NaturalKeysOf(INamedTypeSymbol type)
+    {
+        var keys = new List<NaturalKeyInfo>();
+
+        foreach (var property in type.GetMembers().OfType<IPropertySymbol>())
+        {
+            foreach (var attribute in property.GetAttributes())
+            {
+                if (!IsNaturalKeyAttribute(attribute.AttributeClass, out var isMappedGeneric)) continue;
+
+                ITypeSymbol? source = null;
+                if (isMappedGeneric)
+                {
+                    source = attribute.AttributeClass!.TypeArguments[0];
+                }
+                else
+                {
+                    var named = attribute.NamedArguments.FirstOrDefault(x => x.Key == "SourceProjection");
+                    source = named.Value.Value as ITypeSymbol;
+                }
+
+                var location = attribute.ApplicationSyntaxReference?.GetSyntax().GetLocation()
+                               ?? property.Locations.FirstOrDefault()
+                               ?? Location.None;
+
+                keys.Add(new NaturalKeyInfo(property, source as INamedTypeSymbol, location));
+                break;
+            }
+        }
+
+        return keys;
+    }
+
+    private static bool IsNaturalKeyAttribute(INamedTypeSymbol? attributeClass, out bool isMappedGeneric)
+    {
+        isMappedGeneric = false;
+        if (attributeClass == null || attributeClass.ContainingNamespace?.ToDisplayString() != AttributeNamespace)
+        {
+            return false;
+        }
+
+        if (attributeClass.Name == "NaturalKeyAttribute") return true;
+
+        if (attributeClass is { Name: "MappedNaturalKeyAttribute", Arity: 1 })
+        {
+            isMappedGeneric = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    private sealed class NaturalKeyInfo
+    {
+        public NaturalKeyInfo(IPropertySymbol property, INamedTypeSymbol? source, Location location)
+        {
+            Property = property;
+            Source = source;
+            Location = location;
+        }
+
+        public IPropertySymbol Property { get; }
+
+        /// <summary>The source projection for a mapped key; null for an owned key.</summary>
+        public INamedTypeSymbol? Source { get; }
+
+        public Location Location { get; }
+    }
+}

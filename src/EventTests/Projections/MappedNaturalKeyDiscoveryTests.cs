@@ -189,6 +189,14 @@ public class MnkShipmentProjection : SingleStreamProjection<MnkShipment, Guid>
     public override MnkShipment? Evolve(MnkShipment? snapshot, Guid id, IEvent e) => snapshot;
 }
 
+public sealed record MnkCustomer
+{
+    public Guid Id { get; set; }
+
+    [NaturalKey]
+    public MnkCustomerCode Code { get; set; } = default!;
+}
+
 // One owned key plus two mapped ones, all of distinct types.
 public sealed record MnkInvoice
 {
@@ -200,7 +208,7 @@ public sealed record MnkInvoice
     [MappedNaturalKey<MnkOrder>]
     public MnkOrderNumber OrderNumber { get; set; } = default!;
 
-    [MappedNaturalKey<MnkOrder>]
+    [MappedNaturalKey<MnkCustomer>]
     public MnkCustomerCode CustomerCode { get; set; } = default!;
 
     [NaturalKeySource]
@@ -211,6 +219,10 @@ public class MnkInvoiceProjection : SingleStreamProjection<MnkInvoice, Guid>
 {
     public override MnkInvoice? Evolve(MnkInvoice? snapshot, Guid id, IEvent e) => snapshot;
 }
+
+// Deliberately invalid: the runtime checks below are what these fixtures test, so the build-time
+// diagnostics for the same mistakes are suppressed.
+#pragma warning disable JFXEVT008, JFXEVT009, JFXEVT010
 
 public sealed record MnkTwoOwnedKeys
 {
@@ -256,6 +268,8 @@ public class MnkSelfMappedProjection : SingleStreamProjection<MnkSelfMapped, Gui
 {
     public override MnkSelfMapped? Evolve(MnkSelfMapped? snapshot, Guid id, IEvent e) => snapshot;
 }
+
+#pragma warning restore JFXEVT008, JFXEVT009, JFXEVT010
 
 // An IAggregateProjection written before mapped keys existed still compiles and reports none.
 public class NoMappedKeysAggregateProjection : IAggregateProjection
