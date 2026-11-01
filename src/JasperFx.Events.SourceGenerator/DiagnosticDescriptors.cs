@@ -199,4 +199,33 @@ internal static class DiagnosticDescriptors
         category: "JasperFx.Events",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    // ── Wolverine's [WriteAggregate<TKey>] / [ReadAggregate<TKey>] / [WriteModel<TKey>] / [ReadModel<TKey>]
+    //    (JFXEVT014-015). Matched by name, so this analyzer needs no reference to Wolverine. The named key
+    //    type has to be one the aggregate declares, which is all attributes the checks above already read;
+    //    Wolverine checks the same at codegen against the registered projections. ──
+
+    /// <summary>
+    ///     A handler parameter names a natural key type its aggregate does not have.
+    /// </summary>
+    public static readonly DiagnosticDescriptor ModelNaturalKeyNotFound = new(
+        id: "JFXEVT014",
+        title: "The natural key type named for a model must be one of the model's natural keys",
+        messageFormat: "Parameter '{0}' names natural key type '{1}', but '{2}' {3}",
+        category: "JasperFx.Events",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    ///     A handler parameter names <c>TKey?</c> as the natural key type. The key is <c>TKey</c>; a <c>TKey?</c>
+    ///     member is still matched to it.
+    /// </summary>
+    public static readonly DiagnosticDescriptor ModelNaturalKeyIsNullable = new(
+        id: "JFXEVT015",
+        title: "Name a natural key by its non-nullable type",
+        messageFormat:
+            "Parameter '{0}' names natural key type '{1}'; name '{2}' instead, which a '{1}' member is still matched to",
+        category: "JasperFx.Events",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }

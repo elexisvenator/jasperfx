@@ -118,6 +118,111 @@ internal static class NaturalKeyAnalyzer
         return null;
     }
 
+    private static readonly string[] ModelAttributeNames =
+        ["WriteAggregateAttribute", "ReadAggregateAttribute", "WriteModelAttribute", "ReadModelAttribute"];
+
+    /// <summary>
+    /// A parameter carrying an attribute that may be one of Wolverine's model attributes. Semantic checks
+    /// follow in <see cref="AnalyzeModelParameter" />.
+    /// </summary>
+    public static bool IsPossibleModelParameter(SyntaxNode node)
+    {
+        if (node is not ParameterSyntax { AttributeLists.Count: > 0 } parameter) return false;
+
+        foreach (var attribute in parameter.AttributeLists.SelectMany(x => x.Attributes))
+        {
+            var name = attribute.Name.ToString();
+            if (name.Contains("Aggregate") || name.Contains("Model")) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// JFXEVT014-015: the natural key type a Wolverine model attribute names, through its type argument or
+    /// <c>NaturalKey = typeof(...)</c>, has to be one the model declares with [NaturalKey] or
+    /// [MappedNaturalKey&lt;T&gt;], and never <c>Nullable&lt;T&gt;</c>.
+    /// </summary>
+    public static ImmutableArray<Diagnostic> AnalyzeModelParameter(GeneratorSyntaxContext context,
+        CancellationToken token)
+    {
+        if (context.SemanticModel.GetDeclaredSymbol(context.Node, token) is not IParameterSymbol parameter)
+        {
+            return ImmutableArray<Diagnostic>.Empty;
+        }
+
+        var diagnostics = new List<Diagnostic>();
+
+        foreach (var attribute in parameter.GetAttributes())
+        {
+            var keyType = NamedNaturalKeyType(attribute);
+            if (keyType == null || keyType.TypeKind == TypeKind.Error) continue;
+
+            var location = attribute.ApplicationSyntaxReference?.GetSyntax(token).GetLocation()
+                           ?? parameter.Locations.FirstOrDefault()
+                           ?? Location.None;
+
+            if (keyType is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
+            {
+                diagnostics.Add(Diagnostic.Create(DiagnosticDescriptors.ModelNaturalKeyIsNullable, location,
+                    parameter.Name, keyType.ToDisplayString(), nullable.TypeArguments[0].ToDisplayString()));
+                continue;
+            }
+
+            if (ModelOf(parameter.Type) is not { } model || model.TypeKind == TypeKind.Error) continue;
+
+            var keys = NaturalKeysOf(model);
+            if (keys.Any(x => SymbolEqualityComparer.Default.Equals(x.KeyType, keyType))) continue;
+
+            var known = keys.Count == 0
+                ? "has no natural keys"
+                : "only has natural keys of type " +
+                  string.Join(", ", keys.Select(x => $"'{x.KeyType.ToDisplayString()}'"));
+
+            diagnostics.Add(Diagnostic.Create(DiagnosticDescriptors.ModelNaturalKeyNotFound, location,
+                parameter.Name, keyType.ToDisplayString(), model.Name, known));
+        }
+
+        return diagnostics.ToImmutableArray();
+    }
+
+    /// <summary>
+    /// The key type a Wolverine model attribute names: <c>[WriteAggregate&lt;TKey&gt;]</c> and the like, or
+    /// <c>NaturalKey = typeof(TKey)</c> on any of them. Null for anything else.
+    /// </summary>
+    private static ITypeSymbol? NamedNaturalKeyType(AttributeData attribute)
+    {
+        // Subclasses count too, as Wolverine.Marten's [WriteAggregate] derives from core's [WriteModel]
+        for (var current = attribute.AttributeClass; current != null; current = current.BaseType)
+        {
+            if (!ModelAttributeNames.Contains(current.Name) ||
+                current.ContainingNamespace?.ToDisplayString().StartsWith("Wolverine") != true)
+            {
+                continue;
+            }
+
+            if (current.Arity == 1) return current.TypeArguments[0];
+
+            var named = attribute.NamedArguments.FirstOrDefault(x => x.Key == "NaturalKey");
+            return named.Value.Value as ITypeSymbol;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The model a parameter loads: the parameter's type, or <c>T</c> for <c>IEventStream&lt;T&gt;</c>.
+    /// </summary>
+    private static INamedTypeSymbol? ModelOf(ITypeSymbol parameterType)
+    {
+        if (parameterType is INamedTypeSymbol { Name: "IEventStream", Arity: 1 } stream)
+        {
+            return stream.TypeArguments[0] as INamedTypeSymbol;
+        }
+
+        return parameterType as INamedTypeSymbol;
+    }
+
     /// <summary>
     /// The aggregate (TDoc) of a projection class, found by walking its base types to
     /// JasperFxAggregationProjectionBase&lt;TDoc, TId, TOperations, TQuerySession&gt;. Null when the type is

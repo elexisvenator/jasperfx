@@ -100,6 +100,20 @@ public sealed class AggregateEvolverGenerator : IIncrementalGenerator
                 spc.ReportDiagnostic(diagnostic);
             }
         });
+
+        // Pipeline 6: the natural key type named by Wolverine's model attributes (JFXEVT014-015)
+        var modelNaturalKeyDiagnostics = context.SyntaxProvider.CreateSyntaxProvider(
+                predicate: static (node, _) => NaturalKeyAnalyzer.IsPossibleModelParameter(node),
+                transform: static (ctx, ct) => NaturalKeyAnalyzer.AnalyzeModelParameter(ctx, ct))
+            .Where(static diagnostics => !diagnostics.IsDefaultOrEmpty);
+
+        context.RegisterSourceOutput(modelNaturalKeyDiagnostics, static (spc, diagnostics) =>
+        {
+            foreach (var diagnostic in diagnostics)
+            {
+                spc.ReportDiagnostic(diagnostic);
+            }
+        });
     }
 
     /// <summary>Tracking name of the per-method emitted-events step, for incrementality tests.</summary>
