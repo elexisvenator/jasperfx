@@ -30,6 +30,15 @@ public class NullableNaturalKeyTests
     }
 
     [Fact]
+    public void reads_the_unwrapped_key_value_off_an_aggregate()
+    {
+        var definition = new NnkNullableOwnerProjection().NaturalKeyDefinition!;
+
+        definition.ReadValue(new NnkNullableOwner { Code = new NnkCode("R-1") }).ShouldBe("R-1");
+        definition.ReadValue(new NnkNullableOwner { Code = null }).ShouldBeNull();
+    }
+
+    [Fact]
     public void a_nullable_primitive_key_is_its_underlying_type()
     {
         var definition = new NaturalKeyDefinition(typeof(NnkNullableNumber),

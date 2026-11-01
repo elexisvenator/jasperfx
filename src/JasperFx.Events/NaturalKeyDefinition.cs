@@ -217,6 +217,23 @@ public class NaturalKeyDefinition
     }
 
     /// <summary>
+    /// The key's current value on <paramref name="aggregate" />, unwrapped to its inner primitive
+    /// representation as <see cref="Unwrap" /> does; null when the aggregate has no key yet. Lets a store
+    /// match an aggregate it already holds -- in an identity map or a cache -- against a natural key.
+    /// </summary>
+    public object? ReadValue(object aggregate)
+    {
+        var value = Member switch
+        {
+            PropertyInfo property => property.GetValue(aggregate),
+            FieldInfo field => field.GetValue(aggregate),
+            _ => null
+        };
+
+        return Unwrap(value);
+    }
+
+    /// <summary>
     /// Unwrap a natural key value to its inner primitive representation.
     /// </summary>
     public object? Unwrap(object? value)
