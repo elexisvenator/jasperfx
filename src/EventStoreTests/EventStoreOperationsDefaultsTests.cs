@@ -117,6 +117,78 @@ public class EventStoreOperationsDefaultsTests
         theInterceptor.Fetched.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// The same for the generic <c>FetchManyForWriting&lt;T, TId&gt;</c>, which answers through the generic
+    /// <c>FetchForWriting&lt;T, TId&gt;</c>.
+    /// </summary>
+    private Task<IReadOnlyList<IEventStream<Account>>> fetchManyById<TId>(IReadOnlyList<TId> ids)
+    {
+        var method = typeof(IEventStoreOperations).GetMethods()
+            .Single(m => m.Name == nameof(IEventStoreOperations.FetchManyForWriting)
+                         && m.GetGenericArguments().Length == 2)
+            .MakeGenericMethod(typeof(Account), typeof(TId));
+
+        var caller = new DynamicMethod("callDefaultById", method.ReturnType,
+            [typeof(IEventStoreOperations), typeof(IReadOnlyList<TId>), typeof(CancellationToken)],
+            typeof(EventStoreOperationsDefaultsTests).Module, skipVisibility: true);
+        var il = caller.GetILGenerator();
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Ldarg_1);
+        il.Emit(OpCodes.Ldarg_2);
+        il.Emit(OpCodes.Call, method);
+        il.Emit(OpCodes.Ret);
+
+        try
+        {
+            return (Task<IReadOnlyList<IEventStream<Account>>>)caller.Invoke(null,
+                [theOperations, ids, CancellationToken.None])!;
+        }
+        catch (TargetInvocationException e) when (e.InnerException != null)
+        {
+            // The argument checks run before the first await, so they throw out of the call itself
+            return Task.FromException<IReadOnlyList<IEventStream<Account>>>(e.InnerException);
+        }
+    }
+
+    public record AccountNumber(string Value);
+
+    [Fact]
+    public async Task fetches_one_stream_per_natural_key_in_the_order_given()
+    {
+        AccountNumber[] keys = [new("c"), new("a"), new("b")];
+
+        var streams = await fetchManyById(keys);
+
+        streams.Select(x => x.Key).ShouldBe(keys.Select(x => x.ToString()));
+    }
+
+    [Fact]
+    public async Task rejects_a_repeated_natural_key_before_fetching_anything()
+    {
+        var ex = await Should.ThrowAsync<ArgumentException>(
+            () => fetchManyById<AccountNumber>([new("a"), new("b"), new("a")]));
+
+        ex.ParamName.ShouldBe("ids");
+        theInterceptor.Fetched.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task rejects_a_null_natural_key_before_fetching_anything()
+    {
+        var ex = await Should.ThrowAsync<ArgumentNullException>(
+            () => fetchManyById<AccountNumber>([new("a"), null!]));
+
+        ex.Message.ShouldContain("position 1");
+        theInterceptor.Fetched.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task rejects_a_nullable_id_type()
+    {
+        await Should.ThrowAsync<ArgumentException>(() => fetchManyById<Guid?>([Guid.NewGuid()]));
+        theInterceptor.Fetched.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task no_ids_is_no_streams()
     {

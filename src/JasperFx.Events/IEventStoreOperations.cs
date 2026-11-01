@@ -319,6 +319,65 @@ public interface IEventStoreOperations : IEventOperations, IQueryEventStore
         return streams;
     }
 
+    /// <summary>
+    /// Fetch the projected aggregate T for each of <paramref name="ids" /> for writing, by a natural key or
+    /// any registered identifier type, in one round trip on a store that implements this member — the
+    /// many-stream form of <see cref="FetchForWriting{T, TId}(TId, CancellationToken)" />.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same contract as <see cref="FetchManyForWriting{T}(IReadOnlyList{Guid}, CancellationToken)" />: one
+    /// handle per id, in order, each with its own starting version. An id that matches no stream comes back
+    /// as a handle with a <see langword="null" /> aggregate at version 0, as a single fetch by that id would.
+    /// </para>
+    /// <para>
+    /// <typeparamref name="TId" /> is never <c>Nullable&lt;T&gt;</c>, and no id is null: drop the ids you
+    /// already know to be missing before fetching.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// When <paramref name="ids" /> repeats an id, or <typeparamref name="TId" /> is <c>Nullable&lt;T&gt;</c>.
+    /// </exception>
+    /// <exception cref="ArgumentNullException">When an id is null.</exception>
+    async Task<IReadOnlyList<IEventStream<T>>> FetchManyForWriting<T, TId>(IReadOnlyList<TId> ids,
+        CancellationToken cancellation = default) where T : class where TId : notnull
+    {
+        assertNotNullable<TId>(nameof(ids));
+        ArgumentNullException.ThrowIfNull(ids, nameof(ids));
+        assertNoNulls(ids, nameof(ids));
+        assertDistinct(ids, nameof(ids));
+
+        var streams = new IEventStream<T>[ids.Count];
+        for (var i = 0; i < ids.Count; i++)
+        {
+            streams[i] = await FetchForWriting<T, TId>(ids[i], cancellation).ConfigureAwait(false);
+        }
+
+        return streams;
+    }
+
+    private static void assertNotNullable<TId>(string paramName)
+    {
+        if (Nullable.GetUnderlyingType(typeof(TId)) is { } underlying)
+        {
+            throw new ArgumentException(
+                $"{nameof(FetchManyForWriting)} fetches by {underlying.Name}, not {underlying.Name}?. Drop the null ids before fetching.",
+                paramName);
+        }
+    }
+
+    private static void assertNoNulls<TId>(IReadOnlyList<TId> ids, string paramName)
+    {
+        for (var i = 0; i < ids.Count; i++)
+        {
+            if (ids[i] is null)
+            {
+                throw new ArgumentNullException(paramName,
+                    $"{nameof(FetchManyForWriting)} was given a null id at position {i}. Drop the null ids before fetching.");
+            }
+        }
+    }
+
     private static void assertDistinct<TKey>(IReadOnlyList<TKey> keys, string paramName) where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(keys, paramName);
