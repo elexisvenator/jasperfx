@@ -951,6 +951,21 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
             owned = discoverOwnedNaturalKey(projectionType, docType, prop);
         }
 
+        // [NaturalKeySource] methods are only ever bound to an owned key. With mapped keys only, the source
+        // projection maintains the lookup, and these methods would be silently unused.
+        if (owned == null && mapped.Count > 0)
+        {
+            var unused = naturalKeySourceMethods(docType)
+                .Concat(projectionType == docType ? [] : naturalKeySourceMethods(projectionType))
+                .ToArray();
+
+            if (unused.Length > 0)
+            {
+                problems.Add(
+                    $"{docType.FullNameInCode()} only has mapped natural keys, which their source projection maintains, so its [NaturalKeySource] method(s) {unused.Select(x => $"'{x.DeclaringType?.Name}.{x.Name}'").Join(", ")} would never be used. Remove them, or move them to the projection that owns the key.");
+            }
+        }
+
         // Fetching by natural key is keyed on the .NET type of the key, so every key needs its own type.
         var all = owned == null ? mapped : mapped.Prepend(owned).ToList();
         foreach (var group in all.GroupBy(x => x.OuterType).Where(x => x.Count() > 1))
@@ -966,20 +981,21 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
     {
         var definition = new NaturalKeyDefinition(docType, naturalKeyProp);
 
+        // The first [NaturalKeySource] method found for each event type, across both searches below
+        var claimed = new Dictionary<Type, ClaimedSource>();
+
         // Discover [NaturalKeySource] methods on the aggregate type. Include BOTH instance
         // methods (the classic Apply(TEvent) pattern on the aggregate) AND static methods
         // (self-aggregating records/classes that expose a static factory such as
         //   public static TDoc Create(TEvent e) => new TDoc(...);
         // as in https://github.com/JasperFx/marten/issues/4277).
-        discoverNaturalKeySourceMethods(definition, naturalKeyProp, docType,
-            BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
+        discoverNaturalKeySourceMethods(definition, naturalKeyProp, docType, claimed);
 
         // Also discover [NaturalKeySource] methods on a separate projection class when
         // the projection is not the aggregate itself.
         if (projectionType != docType)
         {
-            discoverNaturalKeySourceMethods(definition, naturalKeyProp, projectionType,
-                BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
+            discoverNaturalKeySourceMethods(definition, naturalKeyProp, projectionType, claimed);
         }
 
         return definition;
@@ -988,17 +1004,26 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
     private static readonly PropertyInfo _eventDataProperty =
         typeof(IEvent).GetProperty(nameof(IEvent.Data))!;
 
+    /// <summary>
+    /// Every method on <paramref name="type" /> marked <c>[NaturalKeySource]</c>, public or not, so that one
+    /// discovery cannot bind is reported rather than skipped.
+    /// </summary>
+    private static IEnumerable<MethodInfo> naturalKeySourceMethods(Type type)
+    {
+        return type
+            .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
+            .Where(m => m.GetCustomAttribute<NaturalKeySourceAttribute>() != null);
+    }
+
     private static void discoverNaturalKeySourceMethods(
         NaturalKeyDefinition definition,
         PropertyInfo naturalKeyProp,
         Type searchType,
-        BindingFlags bindingFlags)
+        Dictionary<Type, ClaimedSource> claimed)
     {
         var docType = typeof(TDoc);
-        var methods = searchType.GetMethods(bindingFlags)
-            .Where(m => m.GetCustomAttribute<NaturalKeySourceAttribute>() != null);
 
-        foreach (var method in methods)
+        foreach (var method in naturalKeySourceMethods(searchType))
         {
             var parameters = method.GetParameters();
 
@@ -1010,21 +1035,21 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
                 continue;
             }
 
-            // Skip if we already have a mapping for this event type
-            if (definition.HasMappingFor(eventType)) continue;
+            // Discovery only ever bound public methods, and used to skip any other without a word
+            if (!method.IsPublic)
+            {
+                definition.RecordProblem(method, eventType,
+                    "it is not public, and discovery only binds public methods — make it public, or register the mapping explicitly with NaturalKeyFor()");
+                continue;
+            }
 
+            Func<IEvent, object?>? extractor = null;
+            PropertyInfo? readsEventProperty = null;
+            string? reason;
             try
             {
-                var extractor = buildExtractor(method, naturalKeyProp, docType, parameters, eventType,
-                    out var reason);
-                if (extractor != null)
-                {
-                    definition.AddOrReplaceMapping(eventType, extractor);
-                }
-                else
-                {
-                    definition.RecordProblem(method, eventType, reason!);
-                }
+                extractor = buildExtractor(method, naturalKeyProp, docType, parameters, eventType,
+                    out reason, out readsEventProperty);
             }
             catch (Exception e)
             {
@@ -1032,11 +1057,45 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
                 // produced no mapping, no log, and no configuration-time error — the natural key lookup
                 // table was simply never written for that event type, and the user found out when
                 // FetchLatest returned null. Keep the failure, and make validation report it.
-                definition.RecordProblem(method, eventType,
-                    $"building a key extraction failed with {e.GetType().Name}: {e.Message}");
+                reason = $"building a key extraction failed with {e.GetType().Name}: {e.Message}";
+            }
+
+            // Only one extraction is used per event. The second method used to be skipped without a word,
+            // so which one won depended on reflection order. Two methods that both read the key off the same
+            // property of the event -- a Create for the first event and an Apply for later ones, say --
+            // derive the same key however they are ordered, so that pairing is allowed.
+            if (claimed.TryGetValue(eventType, out var first))
+            {
+                var sameExtraction = extractor != null && readsEventProperty != null &&
+                                     first.ReadsEventProperty == readsEventProperty;
+
+                if (!sameExtraction)
+                {
+                    definition.RecordDuplicateSource(method, eventType,
+                        $"{first.Method.DeclaringType?.FullNameInCode()}.{first.Method.Name}() also derives the natural key for this event. More than one [NaturalKeySource] method per event type is only allowed when each reads the key from the same property of the event — remove one, or register the mapping explicitly with NaturalKeyFor()");
+                }
+
+                continue;
+            }
+
+            claimed[eventType] = new ClaimedSource(method, extractor == null ? null : readsEventProperty);
+
+            if (extractor != null)
+            {
+                definition.AddOrReplaceMapping(eventType, extractor);
+            }
+            else
+            {
+                definition.RecordProblem(method, eventType, reason!);
             }
         }
     }
+
+    /// <summary>
+    /// The first <c>[NaturalKeySource]</c> method found for an event type, and the event property it reads
+    /// the key from when it binds that way.
+    /// </summary>
+    private sealed record ClaimedSource(MethodInfo Method, PropertyInfo? ReadsEventProperty);
 
     /// <summary>
     /// Which event does this [NaturalKeySource] method handle? The event can arrive as the event type
@@ -1085,9 +1144,11 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
         Type docType,
         ParameterInfo[] parameters,
         Type eventType,
-        out string? reason)
+        out string? reason,
+        out PropertyInfo? readsEventProperty)
     {
         reason = null;
+        readsEventProperty = null;
 
         // TKey and TKey? are the same key, wherever either appears
         var keyType = NaturalKeyDefinition.KeyTypeOf(naturalKeyProp.PropertyType);
@@ -1111,9 +1172,11 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
         }
 
         // 2. The natural key value carried directly on the event body.
-        var fromEventBody = tryReadKeyOffTheEvent(eventParam, eventType, naturalKeyProp, out var matchBlocker);
+        var fromEventBody = tryReadKeyOffTheEvent(eventParam, eventType, naturalKeyProp, out var matchBlocker,
+            out var chosenProperty);
         if (fromEventBody != null)
         {
+            readsEventProperty = chosenProperty;
             return compile(fromEventBody, eventParam);
         }
 
@@ -1204,9 +1267,11 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
         ParameterExpression eventParam,
         Type eventType,
         PropertyInfo naturalKeyProp,
-        out string? blocker)
+        out string? blocker,
+        out PropertyInfo? chosenProperty)
     {
         blocker = null;
+        chosenProperty = null;
 
         var candidates = eventType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => NaturalKeyDefinition.KeyTypeOf(p.PropertyType) ==
@@ -1227,6 +1292,7 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
             return null;
         }
 
+        chosenProperty = chosen;
         return Expression.Convert(
             Expression.Property(
                 Expression.Convert(Expression.Property(eventParam, _eventDataProperty), eventType),

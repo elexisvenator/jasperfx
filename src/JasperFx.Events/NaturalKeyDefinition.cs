@@ -207,6 +207,16 @@ public class NaturalKeyDefinition
     }
 
     /// <summary>
+    /// Record a second <c>[NaturalKeySource]</c> method for an event type that already has one. Unlike
+    /// <see cref="RecordProblem" /> this is recorded even though the event is mapped; an explicit
+    /// registration for the event still clears it.
+    /// </summary>
+    internal void RecordDuplicateSource(MethodInfo method, Type eventType, string reason)
+    {
+        _problems.Add(new NaturalKeySourceProblem(method, eventType, reason));
+    }
+
+    /// <summary>
     /// Unwrap a natural key value to its inner primitive representation.
     /// </summary>
     public object? Unwrap(object? value)
