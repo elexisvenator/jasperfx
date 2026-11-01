@@ -87,6 +87,40 @@ public class NaturalKeySourceSignatureChecksTests
     {
         Should.NotThrow(() => new MnkOrderSummaryProjection().AssembleAndAssertValidity());
     }
+
+    [Fact]
+    public void an_owned_key_that_no_event_sets_fails()
+    {
+        // Its lookup would never be written, so fetching by it would silently find nothing
+        var ex = Should.Throw<InvalidProjectionException>(
+            () => new NksUnmappedProjection().AssembleAndAssertValidity());
+
+        ex.Message.ShouldContain("NksUnmapped.Code' is never set by any event");
+        ex.Message.ShouldContain("NaturalKeyFor");
+    }
+
+    [Fact]
+    public void an_explicit_registration_sets_the_key()
+    {
+        var projection = new NksUnmappedProjection();
+        projection.NaturalKeyFor(x => x.SetBy<NksCodeAssigned>(e => e.Code));
+
+        Should.NotThrow(() => projection.AssembleAndAssertValidity());
+    }
+
+    [Theory]
+    [InlineData(typeof(NksCompositeKeyedProjection), "NksRegionNumber")]
+    [InlineData(typeof(NksGuidKeyedProjection), "System.Guid")]
+    [InlineData(typeof(NksGuidWrapperKeyedProjection), "NksGuidWrapper")]
+    public void a_key_type_that_cannot_be_stored_fails(Type projectionType, string keyTypeName)
+    {
+        // These used to pass registration and fail on the first append, writing the lookup row
+        var projection = (ProjectionBase)Activator.CreateInstance(projectionType)!;
+
+        var ex = Should.Throw<InvalidProjectionException>(() => projection.AssembleAndAssertValidity());
+        ex.Message.ShouldContain(keyTypeName);
+        ex.Message.ShouldContain("cannot be stored in a natural key lookup");
+    }
 }
 
 // ───────────────────────── fixtures ─────────────────────────
@@ -207,4 +241,75 @@ public sealed record NksMappedOnlyWithSource
 public class NksMappedOnlyWithSourceProjection : SingleStreamProjection<NksMappedOnlyWithSource, Guid>
 {
     public override NksMappedOnlyWithSource? Evolve(NksMappedOnlyWithSource? snapshot, Guid id, IEvent e) => snapshot;
+}
+
+public sealed record NksUnmapped
+{
+    public Guid Id { get; set; }
+
+    [NaturalKey]
+    public NksCode Code { get; set; } = default!;
+}
+
+public class NksUnmappedProjection : SingleStreamProjection<NksUnmapped, Guid>
+{
+    public override NksUnmapped? Evolve(NksUnmapped? snapshot, Guid id, IEvent e) => snapshot;
+}
+
+public record NksRegionNumber(string Region, string Number);
+
+public sealed record NksCompositeKeyed
+{
+    public Guid Id { get; set; }
+
+    [NaturalKey]
+    public NksRegionNumber Key { get; set; } = default!;
+
+    [NaturalKeySource]
+    public static NksRegionNumber KeyFor(NksCompositeAssigned e) => e.Key;
+}
+
+public record NksCompositeAssigned(NksRegionNumber Key);
+
+public class NksCompositeKeyedProjection : SingleStreamProjection<NksCompositeKeyed, Guid>
+{
+    public override NksCompositeKeyed? Evolve(NksCompositeKeyed? snapshot, Guid id, IEvent e) => snapshot;
+}
+
+public sealed record NksGuidKeyed
+{
+    public Guid Id { get; set; }
+
+    [NaturalKey]
+    public Guid Key { get; set; }
+
+    [NaturalKeySource]
+    public static Guid KeyFor(NksGuidAssigned e) => e.Key;
+}
+
+public record NksGuidAssigned(Guid Key);
+
+public class NksGuidKeyedProjection : SingleStreamProjection<NksGuidKeyed, Guid>
+{
+    public override NksGuidKeyed? Evolve(NksGuidKeyed? snapshot, Guid id, IEvent e) => snapshot;
+}
+
+public readonly record struct NksGuidWrapper(Guid Value);
+
+public sealed record NksGuidWrapperKeyed
+{
+    public Guid Id { get; set; }
+
+    [NaturalKey]
+    public NksGuidWrapper Key { get; set; }
+
+    [NaturalKeySource]
+    public static NksGuidWrapper KeyFor(NksGuidWrapperAssigned e) => e.Key;
+}
+
+public record NksGuidWrapperAssigned(NksGuidWrapper Key);
+
+public class NksGuidWrapperKeyedProjection : SingleStreamProjection<NksGuidWrapperKeyed, Guid>
+{
+    public override NksGuidWrapperKeyed? Evolve(NksGuidWrapperKeyed? snapshot, Guid id, IEvent e) => snapshot;
 }

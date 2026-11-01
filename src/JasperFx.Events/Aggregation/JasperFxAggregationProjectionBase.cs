@@ -136,15 +136,38 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
                 _naturalKeyProblems.Select(x => "  * " + x).Join(System.Environment.NewLine));
         }
 
-        if (NaturalKeyDefinition == null || NaturalKeyDefinition.DiscoveryProblems.Count == 0) return;
+        if (NaturalKeyDefinition == null) return;
 
-        var problems = NaturalKeyDefinition.DiscoveryProblems
-            .Select(x => "  * " + x)
-            .Join(System.Environment.NewLine);
+        var keyName = $"{typeof(TDoc).FullNameInCode()}.{NaturalKeyDefinition.Member.Name}";
 
-        throw new InvalidProjectionException(
-            $"Unable to derive the natural key '{typeof(TDoc).FullNameInCode()}.{NaturalKeyDefinition.Member.Name}' from every [NaturalKeySource] method on {GetType().FullNameInCode()}:{System.Environment.NewLine}{problems}{System.Environment.NewLine}" +
-            $"Either give the method a signature that derives the key from the event alone — a static method returning {NaturalKeyDefinition.OuterType.FullNameInCode()} that takes the event or IEvent<T> — or register the mapping explicitly with NaturalKeyFor(x => x.SetBy<TEvent>(...)).");
+        // Anything else used to pass registration and fail on the first append, with a cast or a SQL error
+        // from writing the lookup row
+        if (!NaturalKeyDefinition.IsValid())
+        {
+            throw new InvalidProjectionException(
+                $"The natural key '{keyName}' has type {NaturalKeyDefinition.OuterType.FullNameInCode()}, which cannot be stored in a natural key lookup. A natural key is an int, long or string, or a strong-typed identifier wrapping one of those in a single Value property.");
+        }
+
+        if (NaturalKeyDefinition.DiscoveryProblems.Count > 0)
+        {
+            var problems = NaturalKeyDefinition.DiscoveryProblems
+                .Select(x => "  * " + x)
+                .Join(System.Environment.NewLine);
+
+            throw new InvalidProjectionException(
+                $"Unable to derive the natural key '{keyName}' from every [NaturalKeySource] method on {GetType().FullNameInCode()}:{System.Environment.NewLine}{problems}{System.Environment.NewLine}" +
+                $"Either give the method a signature that derives the key from the event alone — a static method returning {NaturalKeyDefinition.OuterType.FullNameInCode()} that takes the event or IEvent<T> — or register the mapping explicitly with NaturalKeyFor(x => x.SetBy<TEvent>(...)).");
+        }
+
+        // An owned key that no event sets has a lookup that is never written, so fetching by it silently
+        // finds nothing. NaturalKeyFor() has always run by now, so explicit registrations are counted. A
+        // mapped key is exempt: its source projection maintains the lookup.
+        if (NaturalKeyDefinition.EventMappings.Count == 0)
+        {
+            throw new InvalidProjectionException(
+                $"The natural key '{keyName}' is never set by any event, so its lookup would never be written and fetching {typeof(TDoc).FullNameInCode()} by it would find nothing. " +
+                $"Mark a method that derives it from an event with [NaturalKeySource], or register the mapping with NaturalKeyFor(x => x.SetBy<TEvent>(...)) on {GetType().FullNameInCode()}.");
+        }
     }
 
     public Type ImplementationType => GetType();
