@@ -513,6 +513,20 @@ public interface IEventStoreOperations : IEventOperations, IQueryEventStore
         where T : class where TId : notnull;
 
     /// <summary>
+    /// Fetch projected aggregate T by a natural key or any registered identifier type, and expected,
+    /// current version. Fails immediately with a concurrency exception if the expectedVersion is stale.
+    /// </summary>
+    /// <remarks>
+    /// A default-implemented member for the reason <see cref="TombstoneStream(Guid)"/> gives: a store
+    /// that has not implemented it stays source-compatible and refuses at runtime.
+    /// </remarks>
+    Task<IEventStream<T>> FetchForWriting<T, TId>(TId id, long expectedVersion,
+        CancellationToken cancellation = default)
+        where T : class where TId : notnull
+        => throw new NotSupportedException(
+            "Fetching by a natural key or strong-typed identifier with an expected version is not implemented on this event store.");
+
+    /// <summary>
     /// Fetch projected aggregate T by a natural key for exclusive writing with row-level locking.
     /// </summary>
     Task<IEventStream<T>> FetchForExclusiveWriting<T, TId>(TId id, CancellationToken cancellation = default)

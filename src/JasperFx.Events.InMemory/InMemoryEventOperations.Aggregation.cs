@@ -99,6 +99,16 @@ public partial class InMemoryEventOperations
         };
 
     /// <inheritdoc />
+    public Task<IEventStream<T>> FetchForWriting<T, TId>(TId id, long expectedVersion,
+        CancellationToken cancellation = default)
+        where T : class where TId : notnull
+        => unwrap<T, TId>(id) switch
+        {
+            Guid guid => FetchForWriting<T>(guid, expectedVersion, cancellation),
+            var key => FetchForWriting<T>((string)key, expectedVersion, cancellation)
+        };
+
+    /// <inheritdoc />
     public Task<IEventStream<T>> FetchForExclusiveWriting<T, TId>(TId id, CancellationToken cancellation = default)
         where T : class where TId : notnull
         => FetchForWriting<T, TId>(id, cancellation);
