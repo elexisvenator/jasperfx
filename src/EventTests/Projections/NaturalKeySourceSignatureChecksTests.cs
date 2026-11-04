@@ -6,7 +6,7 @@ using Shouldly;
 namespace EventTests.Projections;
 
 /// <summary>
-/// [NaturalKeySource] methods that discovery used to skip without a word now fail at configuration time.
+/// [NaturalKeySource] methods that discovery can't bind fail at configuration time.
 /// </summary>
 public class NaturalKeySourceSignatureChecksTests
 {
@@ -114,7 +114,7 @@ public class NaturalKeySourceSignatureChecksTests
     [InlineData(typeof(NksGuidWrapperKeyedProjection), "NksGuidWrapper")]
     public void a_key_type_that_cannot_be_stored_fails(Type projectionType, string keyTypeName)
     {
-        // These used to pass registration and fail on the first append, writing the lookup row
+        // Refused at registration, before the first append could fail writing the lookup row
         var projection = (ProjectionBase)Activator.CreateInstance(projectionType)!;
 
         var ex = Should.Throw<InvalidProjectionException>(() => projection.AssembleAndAssertValidity());

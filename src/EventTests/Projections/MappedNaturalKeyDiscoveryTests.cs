@@ -92,7 +92,6 @@ public class MappedNaturalKeyDiscoveryTests
     [Fact]
     public void more_than_one_owned_key_fails_at_configuration_time()
     {
-        // These used to be silently dropped: discovery took the first [NaturalKey] and ignored the rest.
         var ex = Should.Throw<InvalidProjectionException>(
             () => new MnkTwoOwnedKeysProjection().AssembleAndAssertValidity());
 

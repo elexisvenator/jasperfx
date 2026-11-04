@@ -140,8 +140,7 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
 
         var keyName = $"{typeof(TDoc).FullNameInCode()}.{NaturalKeyDefinition.Member.Name}";
 
-        // Anything else used to pass registration and fail on the first append, with a cast or a SQL error
-        // from writing the lookup row
+        // Anything else would fail on the first append, with a cast or a SQL error from writing the lookup row
         if (!NaturalKeyDefinition.IsValid())
         {
             throw new InvalidProjectionException(
@@ -963,7 +962,6 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
                 continue;
             }
 
-            // Discovery used to take the first owned key and silently ignore the rest.
             if (owned != null)
             {
                 problems.Add(
@@ -1058,7 +1056,7 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
                 continue;
             }
 
-            // Discovery only ever bound public methods, and used to skip any other without a word
+            // Discovery only binds public methods, so any other would never be called
             if (!method.IsPublic)
             {
                 definition.RecordProblem(method, eventType,
@@ -1083,8 +1081,8 @@ public abstract partial class JasperFxAggregationProjectionBase<TDoc, TId, TOper
                 reason = $"building a key extraction failed with {e.GetType().Name}: {e.Message}";
             }
 
-            // Only one extraction is used per event. The second method used to be skipped without a word,
-            // so which one won depended on reflection order. Two methods that both read the key off the same
+            // Only one extraction is used per event, and which of two would win depends on reflection order,
+            // so a second method for the same event is a problem. Two methods that both read the key off the same
             // property of the event -- a Create for the first event and an Apply for later ones, say --
             // derive the same key however they are ordered, so that pairing is allowed.
             if (claimed.TryGetValue(eventType, out var first))

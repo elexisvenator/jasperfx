@@ -130,7 +130,7 @@ public class NaturalKeyDefinition
     /// The owned natural key definition of the source projection, resolved by the event store once every
     /// projection is registered. Null for an owned key, or before resolution.
     /// </summary>
-    public NaturalKeyDefinition? SourceProjectionDefinition { get; set; }
+    public NaturalKeyDefinition? SourceProjectionDefinition { get; internal set; }
 
     /// <summary>
     /// The aggregate type whose natural key lookup serves this key: the source projection's aggregate

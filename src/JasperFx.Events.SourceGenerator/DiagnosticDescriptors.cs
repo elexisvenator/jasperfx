@@ -131,8 +131,8 @@ internal static class DiagnosticDescriptors
     //    on SourceProjection that the runtime can only make once every projection is registered. ──
 
     /// <summary>
-    /// More than one owned natural key on one aggregate. Discovery used to keep the first and silently
-    /// ignore the rest; it now fails at configuration time, and this reports it at build time.
+    /// More than one owned natural key on one aggregate. Discovery refuses it at configuration time, and
+    /// this reports it at build time.
     /// </summary>
     public static readonly DiagnosticDescriptor MultipleOwnedNaturalKeys = new(
         id: "JFXEVT008",

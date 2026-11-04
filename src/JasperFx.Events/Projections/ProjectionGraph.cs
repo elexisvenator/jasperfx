@@ -156,9 +156,10 @@ public abstract class ProjectionGraph<TProjection, TOperations, TQuerySession> :
     /// analyzers catch most of these, but only the registered projections say which source is actually in
     /// play, and a source in another assembly can change without this one being rebuilt.
     /// </summary>
-    public IEnumerable<string> ResolveMappedNaturalKeys()
+    internal IReadOnlyList<string> ResolveMappedNaturalKeys()
     {
         var aggregates = AllAggregateProjections().ToArray();
+        var problems = new List<string>();
 
         foreach (var aggregate in aggregates)
         {
@@ -170,29 +171,31 @@ public abstract class ProjectionGraph<TProjection, TOperations, TQuerySession> :
                 var source = aggregates.FirstOrDefault(x => isSourceFor(x, sourceType));
                 if (source == null)
                 {
-                    yield return
-                        $"{key} reads the natural key lookup of {sourceType.FullNameInCode()}, but no aggregate projection for that type is registered. The source projection maintains the lookup, so it has to be registered too.";
+                    problems.Add(
+                        $"{key} reads the natural key lookup of {sourceType.FullNameInCode()}, but no aggregate projection for that type is registered. The source projection maintains the lookup, so it has to be registered too.");
                     continue;
                 }
 
                 var owned = source.NaturalKeyDefinition;
                 if (owned == null)
                 {
-                    yield return
-                        $"{key} reads the natural key lookup of {sourceType.FullNameInCode()}, but {source.AggregateType.FullNameInCode()} does not own a natural key. Mark one of its properties with [NaturalKey].";
+                    problems.Add(
+                        $"{key} reads the natural key lookup of {sourceType.FullNameInCode()}, but {source.AggregateType.FullNameInCode()} does not own a natural key. Mark one of its properties with [NaturalKey].");
                     continue;
                 }
 
                 if (owned.OuterType != mapped.OuterType)
                 {
-                    yield return
-                        $"{key} has type {mapped.OuterType.FullNameInCode()}, but its source {source.AggregateType.FullNameInCode()} owns natural key {owned.Member.Name} of type {owned.OuterType.FullNameInCode()}.";
+                    problems.Add(
+                        $"{key} has type {mapped.OuterType.FullNameInCode()}, but its source {source.AggregateType.FullNameInCode()} owns natural key {owned.Member.Name} of type {owned.OuterType.FullNameInCode()}.");
                     continue;
                 }
 
                 mapped.SourceProjectionDefinition = owned;
             }
         }
+
+        return problems;
     }
 
     // A mapped key names its source either by the aggregate type or by the projection class.
