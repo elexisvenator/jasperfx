@@ -87,7 +87,7 @@ public partial class RegistrationNoKeyOwner
 }
 
 // Each of these is refused when the store is built. The analyzer reports most of them at compile time too.
-#pragma warning disable JFXEVT008, JFXEVT009, JFXEVT010, JFXEVT011, JFXEVT012, JFXEVT013
+#pragma warning disable JFXEVT010, JFXEVT011, JFXEVT012, JFXEVT013, JFXEVT014, JFXEVT015
 
 public partial class RegistrationTwoOwnedKeys
 {
@@ -203,7 +203,7 @@ public partial class RegistrationMappedToTheWrongKeyType
     public void Apply(RegistrationOtherKeyed e) => Key = e.Key;
 }
 
-#pragma warning restore JFXEVT008, JFXEVT009, JFXEVT010, JFXEVT011, JFXEVT012, JFXEVT013
+#pragma warning restore JFXEVT010, JFXEVT011, JFXEVT012, JFXEVT013, JFXEVT014, JFXEVT015
 
 #endregion
 

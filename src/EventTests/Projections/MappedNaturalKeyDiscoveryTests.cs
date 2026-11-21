@@ -122,14 +122,6 @@ public class MappedNaturalKeyDiscoveryTests
         ex.Message.ShouldContain(nameof(MnkSelfMapped.Number));
         ex.Message.ShouldContain("its own projection");
     }
-
-    [Fact]
-    public void projections_that_do_not_implement_mapped_keys_report_none()
-    {
-        IAggregateProjection projection = new NoMappedKeysAggregateProjection();
-
-        projection.MappedNaturalKeyDefinitions.ShouldBeEmpty();
-    }
 }
 
 // ───────────────────────── fixtures ─────────────────────────
@@ -221,7 +213,7 @@ public class MnkInvoiceProjection : SingleStreamProjection<MnkInvoice, Guid>
 
 // Deliberately invalid: the runtime checks below are what these fixtures test, so the build-time
 // diagnostics for the same mistakes are suppressed.
-#pragma warning disable JFXEVT008, JFXEVT009, JFXEVT010
+#pragma warning disable JFXEVT010, JFXEVT011, JFXEVT012
 
 public sealed record MnkTwoOwnedKeys
 {
@@ -268,17 +260,4 @@ public class MnkSelfMappedProjection : SingleStreamProjection<MnkSelfMapped, Gui
     public override MnkSelfMapped? Evolve(MnkSelfMapped? snapshot, Guid id, IEvent e) => snapshot;
 }
 
-#pragma warning restore JFXEVT008, JFXEVT009, JFXEVT010
-
-// An IAggregateProjection written before mapped keys existed still compiles and reports none.
-public class NoMappedKeysAggregateProjection : IAggregateProjection
-{
-    public Type IdentityType => typeof(Guid);
-    public Type AggregateType => typeof(MnkOrder);
-    public ProjectionLifecycle Lifecycle => ProjectionLifecycle.Inline;
-    public AggregationScope Scope => AggregationScope.SingleStream;
-    public uint Version => 1;
-    public Type[] AllEventTypes => [];
-    public AsyncOptions Options { get; } = new();
-    public NaturalKeyDefinition? NaturalKeyDefinition => null;
-}
+#pragma warning restore JFXEVT010, JFXEVT011, JFXEVT012

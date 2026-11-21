@@ -4,7 +4,7 @@ using Shouldly;
 namespace JasperFx.Events.SourceGenerator.Tests;
 
 /// <summary>
-/// JFXEVT014-015: the natural key type Wolverine's [WriteAggregate&lt;TKey&gt;] and its siblings name has to be one
+/// JFXEVT016-017: the natural key type Wolverine's [WriteAggregate&lt;TKey&gt;] and its siblings name has to be one
 /// of the model's natural keys. The attributes are stand-ins here, matched by name as in a real Wolverine app.
 /// </summary>
 public class ModelNaturalKeyDiagnosticTests
@@ -98,7 +98,7 @@ namespace Test
     private static Diagnostic[] ModelDiagnostics(string handlers)
     {
         var (diagnostics, _) = GeneratorHarness.Run(Preamble + handlers + "\n}\n");
-        return diagnostics.Where(d => d.Id is "JFXEVT014" or "JFXEVT015").ToArray();
+        return diagnostics.Where(d => d.Id is "JFXEVT016" or "JFXEVT017").ToArray();
     }
 
     [Fact]
@@ -126,7 +126,7 @@ namespace Test
     }");
 
         var diagnostic = diagnostics.ShouldHaveSingleItem();
-        diagnostic.Id.ShouldBe("JFXEVT014");
+        diagnostic.Id.ShouldBe("JFXEVT016");
         diagnostic.Severity.ShouldBe(DiagnosticSeverity.Error);
         diagnostic.GetMessage().ShouldContain("'Test.ShelfCode'");
         diagnostic.GetMessage().ShouldContain("only has natural keys of type 'Test.Sku'");
@@ -141,7 +141,7 @@ namespace Test
         public static void A(Command c, [ReadModel<Sku>] Untracked untracked) { }
     }").ShouldHaveSingleItem();
 
-        diagnostic.Id.ShouldBe("JFXEVT014");
+        diagnostic.Id.ShouldBe("JFXEVT016");
         diagnostic.GetMessage().ShouldContain("has no natural keys");
     }
 
@@ -152,7 +152,7 @@ namespace Test
     public static class Handlers
     {
         public static void A(Command c, [WriteModel(NaturalKey = typeof(Unrelated))] Shelf shelf) { }
-    }").ShouldHaveSingleItem().Id.ShouldBe("JFXEVT014");
+    }").ShouldHaveSingleItem().Id.ShouldBe("JFXEVT016");
     }
 
     [Fact]
@@ -164,7 +164,7 @@ namespace Test
         public static void A(Command c, [WriteAggregate(NaturalKey = typeof(Sku?))] Product product) { }
     }").ShouldHaveSingleItem();
 
-        diagnostic.Id.ShouldBe("JFXEVT015");
+        diagnostic.Id.ShouldBe("JFXEVT017");
         diagnostic.GetMessage().ShouldContain("name 'Test.Sku' instead");
     }
 

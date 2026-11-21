@@ -210,7 +210,7 @@ public class NnkNullableViewProjection : SingleStreamProjection<NnkNullableView,
     public override NnkNullableView? Evolve(NnkNullableView? snapshot, Guid id, IEvent e) => snapshot;
 }
 
-#pragma warning disable JFXEVT009
+#pragma warning disable JFXEVT011
 
 public sealed record NnkSameTypeTwice
 {
@@ -228,4 +228,4 @@ public class NnkSameTypeTwiceProjection : SingleStreamProjection<NnkSameTypeTwic
     public override NnkSameTypeTwice? Evolve(NnkSameTypeTwice? snapshot, Guid id, IEvent e) => snapshot;
 }
 
-#pragma warning restore JFXEVT009
+#pragma warning restore JFXEVT011

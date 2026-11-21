@@ -113,6 +113,46 @@ public partial class InMemoryEventOperations
         where T : class where TId : notnull
         => FetchForWriting<T, TId>(id, cancellation);
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<IEventStream<T>>> FetchManyForWriting<T, TId>(IReadOnlyList<TId> ids,
+        CancellationToken cancellation = default) where T : class where TId : notnull
+    {
+        if (Nullable.GetUnderlyingType(typeof(TId)) is { } underlying)
+        {
+            throw new ArgumentException(
+                $"{nameof(FetchManyForWriting)} fetches by {underlying.Name}, not {underlying.Name}?. Drop the null ids before fetching.",
+                nameof(ids));
+        }
+
+        ArgumentNullException.ThrowIfNull(ids);
+
+        var seen = new HashSet<TId>();
+        for (var i = 0; i < ids.Count; i++)
+        {
+            if (ids[i] is null)
+            {
+                throw new ArgumentNullException(nameof(ids),
+                    $"{nameof(FetchManyForWriting)} was given a null id at position {i}. Drop the null ids before fetching.");
+            }
+
+            if (!seen.Add(ids[i]))
+            {
+                throw new ArgumentException(
+                    $"{nameof(FetchManyForWriting)} was given the stream identity '{ids[i]}' more than once. Each stream can be fetched for writing once per call, because two handles on one stream would race each other's expected version.",
+                    nameof(ids));
+            }
+        }
+
+        // Nothing is gained by batching in memory, so one fetch per id, in order
+        var streams = new IEventStream<T>[ids.Count];
+        for (var i = 0; i < ids.Count; i++)
+        {
+            streams[i] = await FetchForWriting<T, TId>(ids[i], cancellation).ConfigureAwait(false);
+        }
+
+        return streams;
+    }
+
     private async Task<IEventStream<T>> fetchForWritingAsync<T>(object streamId, long? expectedVersion,
         CancellationToken token) where T : class
     {

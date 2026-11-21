@@ -28,5 +28,5 @@ public interface IAggregateProjection
     /// <c>[NaturalKey(SourceProjection = ...)]</c> or <c>[MappedNaturalKey&lt;T&gt;]</c>. Each has a distinct
     /// key type, also distinct from <see cref="NaturalKeyDefinition" />'s.
     /// </summary>
-    NaturalKeyDefinition[] MappedNaturalKeyDefinitions => [];
+    NaturalKeyDefinition[] MappedNaturalKeyDefinitions { get; }
 }

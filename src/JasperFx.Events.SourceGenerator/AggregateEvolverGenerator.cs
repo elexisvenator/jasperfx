@@ -85,7 +85,7 @@ public sealed class AggregateEvolverGenerator : IIncrementalGenerator
             spc.AddSource(EmittedEventsFileName, EmittedEventsAnalyzer.EmitManifest(pair.Left));
         });
 
-        // Pipeline 5: natural key validation (JFXEVT008-013). Diagnostics only. Collected so that a type
+        // Pipeline 5: natural key validation (JFXEVT010-015). Diagnostics only. Collected so that a type
         // split across partial declarations is reported once, not once per declaration.
         var naturalKeyDiagnostics = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: static (node, _) => NaturalKeyAnalyzer.IsPossibleCandidate(node),
@@ -101,7 +101,7 @@ public sealed class AggregateEvolverGenerator : IIncrementalGenerator
             }
         });
 
-        // Pipeline 6: the natural key type named by Wolverine's model attributes (JFXEVT014-015)
+        // Pipeline 6: the natural key type named by Wolverine's model attributes (JFXEVT016-017)
         var modelNaturalKeyDiagnostics = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: static (node, _) => NaturalKeyAnalyzer.IsPossibleModelParameter(node),
                 transform: static (ctx, ct) => NaturalKeyAnalyzer.AnalyzeModelParameter(ctx, ct))

@@ -6,7 +6,7 @@ using Shouldly;
 namespace JasperFx.Events.SourceGenerator.Tests;
 
 /// <summary>
-/// JFXEVT008-013: build-time validation of owned and mapped natural keys.
+/// JFXEVT010-015: build-time validation of owned and mapped natural keys.
 /// </summary>
 public class NaturalKeyDiagnosticTests
 {
@@ -59,7 +59,7 @@ public class Untracked
     }
 
     private static bool IsNaturalKeyId(string id)
-        => id is "JFXEVT008" or "JFXEVT009" or "JFXEVT010" or "JFXEVT011" or "JFXEVT012" or "JFXEVT013";
+        => id is "JFXEVT010" or "JFXEVT011" or "JFXEVT012" or "JFXEVT013" or "JFXEVT014" or "JFXEVT015";
 
     [Fact]
     public void valid_owned_and_mapped_keys_report_nothing()
@@ -92,7 +92,7 @@ public class Invoice
     }
 
     [Fact]
-    public void JFXEVT008_more_than_one_owned_key()
+    public void JFXEVT010_more_than_one_owned_key()
     {
         var diagnostic = NaturalKeyDiagnostics(@"
 public class TwoOwners
@@ -107,13 +107,13 @@ public class TwoOwners
 }
 ").ShouldHaveSingleItem();
 
-        diagnostic.Id.ShouldBe("JFXEVT008");
+        diagnostic.Id.ShouldBe("JFXEVT010");
         diagnostic.Severity.ShouldBe(DiagnosticSeverity.Error);
         diagnostic.GetMessage().ShouldContain("'TwoOwners' marks both 'Number' and 'Code'");
     }
 
     [Fact]
-    public void JFXEVT009_two_keys_of_one_type()
+    public void JFXEVT011_two_keys_of_one_type()
     {
         var diagnostic = NaturalKeyDiagnostics(@"
 public class SameType
@@ -128,12 +128,12 @@ public class SameType
 }
 ").ShouldHaveSingleItem();
 
-        diagnostic.Id.ShouldBe("JFXEVT009");
+        diagnostic.Id.ShouldBe("JFXEVT011");
         diagnostic.GetMessage().ShouldContain("'Own' and 'Borrowed' of the same type 'Test.OrderNumber'");
     }
 
     [Fact]
-    public void JFXEVT010_mapped_to_itself()
+    public void JFXEVT012_mapped_to_itself()
     {
         var diagnostic = NaturalKeyDiagnostics(@"
 public class SelfMapped
@@ -145,12 +145,12 @@ public class SelfMapped
 }
 ").ShouldHaveSingleItem();
 
-        diagnostic.Id.ShouldBe("JFXEVT010");
+        diagnostic.Id.ShouldBe("JFXEVT012");
         diagnostic.GetMessage().ShouldContain("'SelfMapped.Number'");
     }
 
     [Fact]
-    public void JFXEVT010_mapped_to_its_own_projection_class()
+    public void JFXEVT012_mapped_to_its_own_projection_class()
     {
         var diagnostic = NaturalKeyDiagnostics(@"
 public class ViaProjection
@@ -164,11 +164,11 @@ public class ViaProjection
 public class ViaProjectionProjection : SingleStreamProjection<ViaProjection, Guid>;
 ").ShouldHaveSingleItem();
 
-        diagnostic.Id.ShouldBe("JFXEVT010");
+        diagnostic.Id.ShouldBe("JFXEVT012");
     }
 
     [Fact]
-    public void JFXEVT011_source_is_not_a_projection_or_keyed_aggregate()
+    public void JFXEVT013_source_is_not_a_projection_or_keyed_aggregate()
     {
         var diagnostic = NaturalKeyDiagnostics(@"
 public class PointsNowhere
@@ -180,12 +180,12 @@ public class PointsNowhere
 }
 ").ShouldHaveSingleItem();
 
-        diagnostic.Id.ShouldBe("JFXEVT011");
+        diagnostic.Id.ShouldBe("JFXEVT013");
         diagnostic.GetMessage().ShouldContain("is neither an aggregate projection nor an aggregate with a [NaturalKey] property");
     }
 
     [Fact]
-    public void JFXEVT011_source_projection_whose_aggregate_has_no_key()
+    public void JFXEVT013_source_projection_whose_aggregate_has_no_key()
     {
         var diagnostic = NaturalKeyDiagnostics(@"
 public class UntrackedProjection : SingleStreamProjection<Untracked, Guid>;
@@ -199,12 +199,12 @@ public class PointsAtUnkeyed
 }
 ").ShouldHaveSingleItem();
 
-        diagnostic.Id.ShouldBe("JFXEVT011");
+        diagnostic.Id.ShouldBe("JFXEVT013");
         diagnostic.GetMessage().ShouldContain("does not own a natural key");
     }
 
     [Fact]
-    public void JFXEVT012_chained_mapping()
+    public void JFXEVT014_chained_mapping()
     {
         var diagnostics = NaturalKeyDiagnostics(@"
 public class Middle
@@ -225,12 +225,12 @@ public class Chained
 ");
 
         var diagnostic = diagnostics.ShouldHaveSingleItem();
-        diagnostic.Id.ShouldBe("JFXEVT012");
+        diagnostic.Id.ShouldBe("JFXEVT014");
         diagnostic.GetMessage().ShouldContain("'Chained.Number' is mapped to 'Middle', whose 'Number' key is itself mapped");
     }
 
     [Fact]
-    public void JFXEVT013_key_type_mismatch()
+    public void JFXEVT015_key_type_mismatch()
     {
         var diagnostic = NaturalKeyDiagnostics(@"
 public class WrongType
@@ -242,7 +242,7 @@ public class WrongType
 }
 ").ShouldHaveSingleItem();
 
-        diagnostic.Id.ShouldBe("JFXEVT013");
+        diagnostic.Id.ShouldBe("JFXEVT015");
         diagnostic.GetMessage().ShouldContain("has type 'Test.CustomerCode', but its source 'Order' owns natural key 'Number' of type 'Test.OrderNumber'");
     }
 
@@ -287,7 +287,7 @@ public class NullableOwnerView
     }
 
     [Fact]
-    public void JFXEVT009_a_key_and_its_nullable_form()
+    public void JFXEVT011_a_key_and_its_nullable_form()
     {
         var diagnostic = NaturalKeyDiagnostics(@"
 public readonly record struct Sku(string Value);
@@ -312,7 +312,7 @@ public class Both
 }
 ").ShouldHaveSingleItem();
 
-        diagnostic.Id.ShouldBe("JFXEVT009");
+        diagnostic.Id.ShouldBe("JFXEVT011");
         diagnostic.GetMessage().ShouldContain("of the same type 'Test.Sku'");
     }
 
@@ -329,7 +329,7 @@ public class WrongType
 }
 ";
         var (diagnostics, _) = GeneratorHarness.Run(source);
-        var diagnostic = diagnostics.Single(d => d.Id == "JFXEVT013");
+        var diagnostic = diagnostics.Single(d => d.Id == "JFXEVT015");
 
         source.Substring(diagnostic.Location.SourceSpan.Start, diagnostic.Location.SourceSpan.Length)
             .ShouldBe("MappedNaturalKey<Order>");
@@ -354,7 +354,7 @@ public partial class SplitOwners
 }
 ");
 
-        diagnostics.ShouldHaveSingleItem().Id.ShouldBe("JFXEVT008");
+        diagnostics.ShouldHaveSingleItem().Id.ShouldBe("JFXEVT010");
     }
 
     [Fact]
@@ -362,7 +362,7 @@ public partial class SplitOwners
     {
         NaturalKeyDiagnostics(@"
 public record PositionalOwners(Guid Id, [property: NaturalKey] OrderNumber Number, [property: NaturalKey] CustomerCode Code);
-").ShouldHaveSingleItem().Id.ShouldBe("JFXEVT008");
+").ShouldHaveSingleItem().Id.ShouldBe("JFXEVT010");
     }
 
     [Fact]
@@ -425,7 +425,7 @@ public class Bad
         driver.RunGeneratorsAndUpdateCompilation(consumer, out _, out ImmutableArray<Diagnostic> diagnostics);
 
         var diagnostic = diagnostics.Where(d => IsNaturalKeyId(d.Id)).ShouldHaveSingleItem();
-        diagnostic.Id.ShouldBe("JFXEVT013");
+        diagnostic.Id.ShouldBe("JFXEVT015");
         diagnostic.GetMessage().ShouldContain("'Bad.Number'");
     }
 

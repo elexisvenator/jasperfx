@@ -8,7 +8,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace JasperFx.Events.SourceGenerator;
 
 /// <summary>
-/// Build-time validation of [NaturalKey] / [MappedNaturalKey&lt;T&gt;] (JFXEVT008-013). Independent of
+/// Build-time validation of [NaturalKey] / [MappedNaturalKey&lt;T&gt;] (JFXEVT010-015). Independent of
 /// the evolver pipelines: any type carrying a natural key attribute is checked, whether or not the
 /// generator emits anything for it. A source projection is resolved through its symbol, so a source
 /// in a referenced assembly is checked too.
@@ -139,7 +139,7 @@ internal static class NaturalKeyAnalyzer
     }
 
     /// <summary>
-    /// JFXEVT014-015: the natural key type a Wolverine model attribute names, through its type argument or
+    /// JFXEVT016-017: the natural key type a Wolverine model attribute names, through its type argument or
     /// <c>NaturalKey = typeof(...)</c>, has to be one the model declares with [NaturalKey] or
     /// [MappedNaturalKey&lt;T&gt;], and never <c>Nullable&lt;T&gt;</c>.
     /// </summary>

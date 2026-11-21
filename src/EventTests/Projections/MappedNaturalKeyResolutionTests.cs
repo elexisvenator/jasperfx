@@ -102,7 +102,7 @@ public class MnkUnkeyedProjection : SingleStreamProjection<MnkUnkeyed, Guid>
 }
 
 // Deliberately invalid: the runtime checks are what these fixtures test.
-#pragma warning disable JFXEVT011, JFXEVT013
+#pragma warning disable JFXEVT013, JFXEVT015
 
 public sealed record MnkPointsAtUnkeyed
 {
@@ -130,4 +130,4 @@ public class MnkWrongTypeProjection : SingleStreamProjection<MnkWrongType, Guid>
     public override MnkWrongType? Evolve(MnkWrongType? snapshot, Guid id, IEvent e) => snapshot;
 }
 
-#pragma warning restore JFXEVT011, JFXEVT013
+#pragma warning restore JFXEVT013, JFXEVT015
